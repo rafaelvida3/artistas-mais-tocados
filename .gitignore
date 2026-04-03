@@ -1,0 +1,39 @@
+# WordPress core
+/wp-admin/
+/wp-includes/
+/wp-*.php
+/license.txt
+/readme.html
+/xmlrpc.php
+
+# Config (não subir)
+wp-config.php
+.env
+
+# Root files
+.htaccess
+.htaccess.bk
+ads.txt
+favicon.ico
+index.php
+
+# Ignore everything inside wp-content
+wp-content/**
+
+# Except mu-plugins
+!wp-content/mu-plugins/
+!wp-content/mu-plugins/**
+
+wp-content/mu-plugins/request-debug.php
+wp-content/mu-plugins/simba-tfa-encryption-key.php
+wp-content/mu-plugins/disable-aios.php
+
+# Logs
+*.log
+debug.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
