@@ -2,6 +2,10 @@
 
 MU plugins used to power an automated music-ranking site in WordPress, with focus on SEO, performance and programmatic content generation.
 
+## Live Demo
+
+https://artistasmaistocados.com.br
+
 This project aggregates curated Spotify playlists by genre, ranks artists by popularity, creates internal artist pages, enriches content with external data, and injects structured data for better search visibility.
 
 ## What this project does
