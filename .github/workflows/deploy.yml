@@ -26,9 +26,9 @@ jobs:
         run: vendor/bin/phpunit
 
       - name: Deploy MU plugins with rsync
-        uses: burnett01/rsync-deployments@7.0.2
+        uses: burnett01/rsync-deployments@v8
         with:
-          switches: -avz --delete --exclude='.git' --exclude='simba-tfa-encryption-key.php' --exclude='disable-aios.php'
+          switches: -avzr --delete --exclude='.git' --exclude='simba-tfa-encryption-key.php' --exclude='disable-aios.php'
           path: wp-content/mu-plugins/
           remote_path: ~/domains/artistasmaistocados.com.br/public_html/wp-content/mu-plugins/
           remote_host: ${{ secrets.HOSTINGER_HOST }}
