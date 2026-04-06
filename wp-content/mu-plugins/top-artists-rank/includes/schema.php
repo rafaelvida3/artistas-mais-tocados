@@ -138,17 +138,25 @@ function get_ranking_schema_context(): ?array {
     return null;
 }
 
+function get_current_artist_spotify_id(?int $post_id = null): string {
+    $resolved_post_id = $post_id ?? get_the_ID();
+
+    if (!$resolved_post_id) {
+        return '';
+    }
+
+    $artist_id = get_post_meta($resolved_post_id, 'artist_spotify_id', true);
+
+    return is_string($artist_id) ? $artist_id : '';
+}
+
 function get_artist_schema_context(): ?array {
     $post_id = get_queried_object_id();
 
     if ($post_id <= 0) {
         return null;
     }
-
-    if (!function_exists('get_current_artist_spotify_id')) {
-        return null;
-    }
-
+    
     $artist_id = get_current_artist_spotify_id($post_id);
 
     if ($artist_id === '') {

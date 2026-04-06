@@ -229,164 +229,6 @@ function get_playlists_for_genre(string $genre): array {
 }
 
 /**
- * Checks if artist genres indicate Brazilian origin (heuristic).
- * @param string[] $genres
- */
-function is_brazilian_genre(array $genres): bool {
-    if (!$genres) { return false; }
-    // normaliza todos os gêneros numa única string
-    $hay = ' ' . implode(' ', array_map('normalize_string', $genres)) . ' ';
-    // Palavras-chave comuns em gêneros do Spotify para artistas BR
-    $needles = get_needles_by_genre();
-    
-    foreach ($needles as $n) {
-        $n_norm = normalize_string($n);
-        if (mb_strpos($hay, $n_norm) !== false) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
- * Measures current artist presence in genre based on top tracks.
- */
-function artist_recent_presence_in_genre(string $token, string $artist_id, array $tracks, string $genre): array {
-    
-    if (empty($tracks)) return ['count5'=>0,'count10'=>0,'ratio10'=>0.0];
-
-    // 2) coletar artistas únicos dessas top-tracks para buscar genres (em lote)
-    $aid_set = [];
-    foreach ($tracks as $t) {
-        if (isset($t['artists']) && is_array($t['artists'])) {
-            foreach ($t['artists'] as $a) {
-                if (!empty($a['id'])) $aid_set[(string)$a['id']] = true;
-            }
-        }
-    }
-    $artist_ids = array_keys($aid_set);
-
-    // 3) buscar genres dos artistas (em chunks de 50)
-    $genres_map = []; // artist_id => genres[]
-    foreach (array_chunk($artist_ids, 50) as $chunk) {
-        $urlA = add_query_arg(['ids'=>implode(',', $chunk)], API_BASE_URL . '/artists');
-        $ra = wp_remote_get($urlA, [
-            'headers' => ['Authorization' => 'Bearer ' . $token],
-            'timeout' => TIMEOUT,
-            'redirection'  => 2,
-        ]);
-
-        if (is_wp_error($ra)) {
-            error_log('[top-artists] API ERROR ' . $urlA . ' :: ' . $ra->get_error_message());
-        }
-
-        $ca = (int) wp_remote_retrieve_response_code($ra);
-
-        if ($ca !== 200) {
-            error_log('[top-artists] API ERROR ' . $urlA . ' :: CODE ' . $ca);
-        }
-
-        if (!is_wp_error($ra) && $ca === 200) {
-            $ad = json_decode((string) wp_remote_retrieve_body($ra), true);
-            foreach (($ad['artists'] ?? []) as $a) {
-                if (!is_array($a) || empty($a['id'])) continue;
-                $genres_map[(string)$a['id']] = is_array($a['genres'] ?? null) ? $a['genres'] : [];
-            }
-        }
-    }
-
-    // 4) função inline: artista (principal) combina com gênero?
-    $match_artist_genre = function(array $artist_genres) use ($genre): bool {
-        $hay = ' ' . normalize_string(implode(' ', $artist_genres)) . ' ';
-
-        $needles = get_needles_by_genre($genre);
-        
-        foreach ($needles as $n) {
-            if (strpos($hay, normalize_string($n)) !== false) return true;
-        }
-        return false;
-    };
-
-    // 5) contar “faixas do gênero” nas top 5 / top 10, com recorte de recência
-    $now = time();
-    $release_cut_ts = strtotime('-18 months'); // janelinha de ciclo recente
-
-    $is_genre = [];
-    foreach ($tracks as $t) {
-        // use o artista principal da faixa
-        $a0 = $t['artists'][0]['id'] ?? '';
-        $a0_genres = $a0 && isset($genres_map[$a0]) ? $genres_map[$a0] : [];
-
-        // recência por release_date (quando disponível)
-        $rel_date = $t['album']['release_date'] ?? null;
-        $rel_prec = $t['album']['release_date_precision'] ?? null;
-        $rel_ts   = parse_release_date_to_ts(is_string($rel_date)?$rel_date:null, is_string($rel_prec)?$rel_prec:null);
-
-        // track counts if it matches genre and is recent enough
-        $ok_recent = $rel_ts ? ($rel_ts >= $release_cut_ts) : true; // se não vier data, não bloqueia
-        $is_genre[] = ($ok_recent && $match_artist_genre($a0_genres)) ? 1 : 0;
-    }
-
-    // top 5 / top 10
-    $top5  = array_slice($is_genre, 0, 5);
-    $top10 = array_slice($is_genre, 0, 10);
-
-    $c5 = array_sum($top5);
-    $c10 = array_sum($top10);
-    $r10 = count($top10) > 0 ? ($c10 / count($top10)) : 0.0;
-
-    $out = ['count5' => (int)$c5, 'count10' => (int)$c10, 'ratio10' => (float)$r10];
-    return $out;
-}
-
-// Fração de top tracks em que o artista é artists[0]
-function inspect_artist_toptracks_ratio(string $artist_id, array $tracks): float {
-    $total = 0; $primary_hits = 0;
-
-    foreach ($tracks as $t) {
-        $total++;
-        $a0 = $t['artists'][0]['id'] ?? '';
-        if ($a0 === $artist_id) $primary_hits++;
-    }
-    if ($total > 0) $ratio = $primary_hits / $total;
-
-    return $ratio;
-}
-
-// Decisão final sem usar "followers"
-function artist_is_probably_label(array $artist_tracks, array $artist_albums, string $artist_id, string $name, array $genres = []): bool {
-
-    $norm = ' ' . normalize_string($name) . ' ';
-    if (strpos($norm, ' various artists ') !== false) {
-        return true;
-    }
-
-    // se o nome não cheira a selo, não bloqueia
-    if (!label_name_is_suspect($name)) {
-        return false;
-    }
-
-    // sem gêneros → tende a ser selo
-    if (empty($genres)) {
-        return true;
-    }
-
-    $ratio    = inspect_artist_toptracks_ratio($artist_id, $artist_tracks); // 0..1
-    $releases = count_primary_releases($artist_albums, 3);
-    
-    $appears  = count_appears_on($artist_albums, 50);
-
-    // var_dump($releases);
-
-    $is_label =
-        ($ratio <= 0.10) ||
-        (($releases <= 2) && ($appears >= 10)) ||
-        (($ratio < 0.35) && ($appears >= 20));
-
-    return $is_label;
-}
-
-/**
  * Parallel: artist -> top tracks
  *
  * - Caches ONLY API results in "artist_tracks_{artist_id}" for 12h.
@@ -396,8 +238,7 @@ function artist_is_probably_label(array $artist_tracks, array $artist_albums, st
  * @param array<string> $artist_ids
  * @return array<string, ?array>  // tracks array or null on failure
  */
-function fetch_artist_top_tracks_parallel(string $token, array $artist_ids): array
-{
+function fetch_artist_top_tracks_parallel(string $token, array $artist_ids): array {
     $headers   = [
         'Authorization' => 'Bearer ' . $token,
         'Accept'        => 'application/json',
@@ -588,8 +429,7 @@ function fetch_playlist_tracks_parallel(
     return $packs;
 }
 
-function fetch_artists_parallel(string $token, array $artist_ids): array
-{
+function fetch_artists_parallel(string $token, array $artist_ids): array {
     $headers = [
         'Authorization' => 'Bearer ' . $token,
         'Accept'        => 'application/json',
@@ -747,10 +587,6 @@ function get_top_artists_by_genre(string $genre, int $limit = 50): array {
 
     $artist_ids = array_keys($artist_map);    
     $info_map = fetch_artists_parallel($token, $artist_ids);
-    
-    // $top_tracks = fetch_artist_top_tracks_parallel($token, $artist_ids);  
-    
-    // $albums = fetch_albums_parallel($token, $artist_ids);
 
     // Brazilian heuristic filter
     $rows = [];
@@ -765,10 +601,6 @@ function get_top_artists_by_genre(string $genre, int $limit = 50): array {
         ];
 
         $artist_genres = is_array($info['genres'] ?? null) ? $info['genres'] : [];
-
-        if ($fallback_name == 'DJ Ari SL') {
-            // print_r($artist_genres);exit;
-        }
 
         if (!artist_matches_genre($genre, $artist_genres)) { continue; }
 
@@ -788,7 +620,7 @@ function get_top_artists_by_genre(string $genre, int $limit = 50): array {
         return [];
     }
 
-    // 📊 Ordena por popularidade desc; desempate por nome
+    // Sort by popularity description; tiebreaker by name.
     usort($rows, static function(array $a, array $b): int {
         $cmp = $b['popularity'] <=> $a['popularity'];
         return $cmp !== 0 ? $cmp : strcmp((string)$a['artist_name'], (string)$b['artist_name']);
@@ -797,18 +629,6 @@ function get_top_artists_by_genre(string $genre, int $limit = 50): array {
     $rows = array_slice($rows, 0, $limit);
 
     return $rows;
-}
-
-function get_current_artist_spotify_id(?int $post_id = null): string {
-    $resolved_post_id = $post_id ?? get_the_ID();
-
-    if (!$resolved_post_id) {
-        return '';
-    }
-
-    $artist_id = get_post_meta($resolved_post_id, 'artist_spotify_id', true);
-
-    return is_string($artist_id) ? $artist_id : '';
 }
 
 function get_artist_context_by_spotify_id(string $artist_id): array {
@@ -1033,21 +853,6 @@ function get_artist_bio_cache_key(string $artist_name): string {
 
 function get_default_artist_bio_text(): string {
     return 'Confira as músicas mais tocadas e os maiores sucessos deste artista.';
-}
-
-function get_featured_artist_texts(array $artist, string $fallback_text): array {
-    $artist_name = isset($artist['artist_name']) ? trim((string) $artist['artist_name']) : '';
-
-    if ($artist_name === '') {
-        $artist_name = isset($artist['name']) ? trim((string) $artist['name']) : '';
-    }
-
-    $artist_bio = $artist_name !== '' ? get_artist_bio_by_name($artist_name) : '';
-
-    return [
-        'description' => '',
-        'bio' => $artist_bio !== '' ? $artist_bio : $fallback_text,
-    ];
 }
 
 function get_artist_bio_if_available(array $artist): string {

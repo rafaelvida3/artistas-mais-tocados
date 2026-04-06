@@ -25,14 +25,13 @@ jobs:
       - name: Run tests
         run: vendor/bin/phpunit
 
-      - name: Deploy MU plugins
-        if: success()
-        uses: appleboy/scp-action@v0.1.7
+      - name: Deploy MU plugins with rsync
+        uses: burnett01/rsync-deployments@7.0.2
         with:
-          host: ${{ secrets.HOSTINGER_HOST }}
-          username: ${{ secrets.HOSTINGER_USERNAME }}
-          key: ${{ secrets.HOSTINGER_SSH_KEY }}
-          port: ${{ secrets.HOSTINGER_PORT }}
-          source: "wp-content/mu-plugins/*"
-          target: "~/domains/artistasmaistocados.com.br/public_html/wp-content/mu-plugins"
-          strip_components: 2
+          switches: -avz --delete --exclude='.git' --exclude='simba-tfa-encryption-key.php' --exclude='disable-aios.php'
+          path: wp-content/mu-plugins/
+          remote_path: ~/domains/artistasmaistocados.com.br/public_html/wp-content/mu-plugins/
+          remote_host: ${{ secrets.HOSTINGER_HOST }}
+          remote_user: ${{ secrets.HOSTINGER_USERNAME }}
+          remote_key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          remote_port: ${{ secrets.HOSTINGER_PORT }}
