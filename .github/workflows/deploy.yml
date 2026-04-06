@@ -25,17 +25,6 @@ jobs:
       - name: Run tests
         run: vendor/bin/phpunit
 
-      - name: Clean remote MU plugins directory
-        if: success()
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.HOSTINGER_HOST }}
-          username: ${{ secrets.HOSTINGER_USERNAME }}
-          key: ${{ secrets.HOSTINGER_SSH_KEY }}
-          port: ${{ secrets.HOSTINGER_PORT }}
-          script: |
-            find ~/domains/artistasmaistocados.com.br/public_html/wp-content/mu-plugins -mindepth 1 -delete
-
       - name: Deploy MU plugins
         if: success()
         uses: appleboy/scp-action@v0.1.7
