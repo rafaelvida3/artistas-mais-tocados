@@ -2,7 +2,9 @@
 
 MU plugins used to power an automated music-ranking site in WordPress, with focus on SEO, performance and programmatic content generation.
 
-## Live Demo
+## Production
+
+This project is running in production:
 
 https://artistasmaistocados.com.br
 
@@ -30,18 +32,42 @@ This is not a generic WordPress customization. It is a small content automation 
 - structured data customization
 - operational tooling for sitemap and indexing workflows
 
+## Deployment
+
+MU plugins are automatically tested and deployed to production using GitHub Actions on every push to `main`.
+
+## Testing
+
+This project includes a lightweight automated test setup using PHPUnit.
+
+Tests cover pure helper logic extracted from WordPress-dependent code, such as:
+
+- ranking and normalization helpers
+- schema generation logic
+
+This approach keeps tests fast and reliable by isolating business logic from the WordPress runtime.
+
+To run tests:
+
+```
+vendor/bin/phpunit
+```
+
 ## Repository structure
 
-```text
+```
 wp-content/mu-plugins/
 ├── common/
 │   └── post-updates.php
 ├── top-artists-rank/
 │   ├── bootstrap.php
-│   └── includes/
-│       └── schema.php
-├── disable-aios.php
+│   ├── includes/
+│   │   └── schema.php
+│   ├── src/
+│   │   ├── ranking_helpers.php
+│   │   └── schema_helpers.php
 ├── indexnow-url-list.php
 ├── refresh-pages-dates.php
 ├── site-automation.php
-└── top-artists-rank.php
+├── top-artists-rank.php
+```

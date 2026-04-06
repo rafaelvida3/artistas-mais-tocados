@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/includes/schema.php';
+require_once __DIR__ . '/src/ranking_helpers.php';
 
 use WpOrg\Requests\Requests;
 use WpOrg\Requests\Response;
@@ -24,15 +25,8 @@ function is_editor_context(): bool {
     return false;
 }
 
-// ============================================
-// ⚙️ Configuração (simples e direta)
-// - Defina SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no wp-config.php
-// - Tudo cacheado via transient por 1 hora
-// - Sem WP-Cron; use um cron externo batendo na homepage
-// ============================================
-
 /**
- * 🔐 Obtém token de acesso (Client Credentials) e cacheia brevemente.
+ * Retrieves Spotify access token (Client Credentials flow) and caches it.
  */
 function get_spotify_token(): string {
     // Try transient first
@@ -177,17 +171,6 @@ function request_multiple_json(
 }
 
 /**
- * Remove acentos e coloca em lowercase para comparar textos.
- */
-function normalize_string(string $text): string {
-    // remove acentos
-    $text = transliterator_transliterate('Any-Accents; Latin-ASCII', $text);
-    // deixa só letras/números básicos
-    // lowercase e trim
-    return strtolower(trim((string)$text));
-}
-
-/**
  * Curated Spotify playlist IDs by genre.
  * Edit this array whenever you want to change sources.
  *
@@ -230,35 +213,6 @@ function get_curated_playlists_map(): array {
     return $map;
 }
 
-function get_needles_by_genre(string $genre = ''): array {
-    $map = [
-        'funk' => [
-            'funk carioca','funk br','baile funk','funk consciente','funk de bh','funk melody','brazilian funk'
-        ],
-        'sertanejo' => [
-            'sertanejo','sertanejo universitario','agronejo','modao',
-        ],
-        'piseiro' => [
-            'piseiro','pisadinha','forro','forro eletronico','arrocha'
-        ],
-        'trap' => [
-            'trap brasileiro','trap br','rap brasileiro','hip hop brasileiro', 'brazilian trap', 'trap', 'brazilian hip hop', 'trap funk'
-        ],
-        'pagode' => [
-            'pagode','samba','pagode romantico','samba pagode'
-        ]
-    ];
-
-    if ($genre !== '') {
-        $list = $map[$genre] ?? [];
-        if (!is_array($list) || !$list) { return []; }
-    } else {
-        return array_merge(...array_values($map));
-    }
-    
-    return $list;
-}
-
 /**
  * Get curated playlist IDs for a given genre, capped to $max_playlists if provided.
  *
@@ -275,7 +229,7 @@ function get_playlists_for_genre(string $genre): array {
 }
 
 /**
- * Verifica se a lista de gêneros de um artista indica BR (heurística).
+ * Checks if artist genres indicate Brazilian origin (heuristic).
  * @param string[] $genres
  */
 function is_brazilian_genre(array $genres): bool {
@@ -295,126 +249,7 @@ function is_brazilian_genre(array $genres): bool {
 }
 
 /**
- * Verifica se o perfil do artista combina com o gênero da página.
- * Usa gêneros do Spotify do artista (array de strings) já retornados em /v1/artists.
- */
-function artist_matches_genre(string $genre, array $artist_genres): bool
-{
-    if ($genre === 'geral') {
-        return true;
-    }
-
-    if (empty($artist_genres)) {
-        return false;
-    }
-
-    // Normalize needles and artist genres
-    $needles = array_map('normalize_string', get_needles_by_genre($genre));
-    $normalized_genres = array_map('normalize_string', $artist_genres);
-
-    // Fast path: index 0 match is enough
-    if (isset($normalized_genres[0]) && in_array($normalized_genres[0], $needles, true)) {
-        return true;
-    }
-
-    // If match occurs only at index 1, it must ALSO occur at index 2
-    $match_idx1 = isset($normalized_genres[1]) && in_array($normalized_genres[1], $needles, true);
-    if ($match_idx1) {
-        $match_idx2 = isset($normalized_genres[2]) && in_array($normalized_genres[2], $needles, true);
-        return $match_idx2;
-    }
-
-    return false;
-}
-
-/**
- * Denylists internos do plugin (por gênero).
- * → Substitua os IDs pelos reais (open.spotify.com/artist/{ID})
- */
-function top_artists_internal_denylist(): array {
-    return [
-        'funk' => [
-            '1APqNiQUA2XpwLEbywSWmZ' => true, // Tropa da W&S
-            '64DTkZLH6KkkMwZEEZ5VWC' => true // Love Funk
-        ],
-        'sertanejo' => [
-            '0oAZhL6hFrM3YRr6QzjlOf' => true // MJ Records
-        ],
-        'trap' => [
-            '3prRKGJz16RRMRSIM97nHw' => true, // Supernova Ent
-            '25XJqeReVV38w0tR04GGBd' => true, // Mainstreet
-            '6KHnECmT9Nn73k1tKs62Wu' => true, // HHR,
-            '3YVxmhkewoRHu8WFgWlCb7' => true, // NADAMAL
-            '7gHzR22tDNSWGS4HkvvPgw' => true, // THE BOX
-            '5RYjXDdZ8WSMrjTacFC6Gi' => true // AMUSIK
-        ],
-        'pagode' => [],
-        'piseiro' => [
-            '7skt0YXuBGQZr4LGkyTShp' => true, // ÉaBest
-        ],
-        'geral' => [
-            '1APqNiQUA2XpwLEbywSWmZ' => true, // Tropa da W&S
-            '64DTkZLH6KkkMwZEEZ5VWC' => true, // Love Funk
-            '0oAZhL6hFrM3YRr6QzjlOf' => true, // MJ Records           
-            '3prRKGJz16RRMRSIM97nHw' => true, // Supernova Ent
-            '25XJqeReVV38w0tR04GGBd' => true, // Mainstreet
-            '7gHzR22tDNSWGS4HkvvPgw' => true, // THE BOX
-            '5RYjXDdZ8WSMrjTacFC6Gi' => true, // AMUSIK
-            '7skt0YXuBGQZr4LGkyTShp' => true, // ÉaBest
-        ], // opcional
-    ];
-}
-
-/**
- * Retorna a denylist efetiva de um gênero (interno + filters para override opcional).
- */
-function top_artists_get_denylist_for_genre(string $genre): array {
-    $all = top_artists_internal_denylist();
-    $base = $all[$genre] ?? [];
-
-    return is_array($base) ? $base : [];
-}
-
-/**
- * Consulta a denylist do gênero.
- */
-function artist_is_denied_for_genre(string $artist_id, string $genre): bool {
-    $deny = top_artists_get_denylist_for_genre($genre);
-    return !empty($deny[$artist_id]);
-}
-
-function parse_release_date_to_ts(?string $date, ?string $precision): int {
-    if (!$date) return 0;
-    $p = $precision ?: 'day'; // pode vir 'day', 'month' ou 'year'
-    if ($p === 'year')  { $date .= '-01-01'; }
-    if ($p === 'month') { $date .= '-01'; }
-    $ts = strtotime($date);
-    return $ts ? (int)$ts : 0;
-}
-
-// Nome suspeito (rápido)
-function label_name_is_suspect(string $name): bool {
-    $n = ' ' . normalize_string($name) . ' ';
-    $kw = [
-        'entertainment',' ent ',' records ',' record ',' rec ',
-        'label',' selo ',' editora ',
-        'produtora',' producoes ',' produções ',' productions ',' prod ',
-        'estudio',' estudios ',' studio ',' studios ',
-        'films',' filmes ',' media ',' midia ',
-        'discos',' gravacoes ',' gravações ',
-        'topic', 'various artists',' artistas variados ',' v a ',' v.a '
-    ];
-    foreach ($kw as $k) {
-        if (strpos($n, $k) !== false) return true;
-    }
-    // sufixos/abreviações comuns
-    if (preg_match('/\s(ent|rec|prod|prod\.)$/', trim($n))) return true;
-    return false;
-}
-
-/**
- * Mede a presença ATUAL do artista no gênero via top-tracks BR.
- * Retorna ['count5'=>int, 'count10'=>int, 'ratio10'=>float]
+ * Measures current artist presence in genre based on top tracks.
  */
 function artist_recent_presence_in_genre(string $token, string $artist_id, array $tracks, string $genre): array {
     
@@ -487,7 +322,7 @@ function artist_recent_presence_in_genre(string $token, string $artist_id, array
         $rel_prec = $t['album']['release_date_precision'] ?? null;
         $rel_ts   = parse_release_date_to_ts(is_string($rel_date)?$rel_date:null, is_string($rel_prec)?$rel_prec:null);
 
-        // faixa conta pro gênero se: principal “cheira” ao gênero E é recente o suficiente
+        // track counts if it matches genre and is recent enough
         $ok_recent = $rel_ts ? ($rel_ts >= $release_cut_ts) : true; // se não vier data, não bloqueia
         $is_genre[] = ($ok_recent && $match_artist_genre($a0_genres)) ? 1 : 0;
     }
@@ -516,40 +351,6 @@ function inspect_artist_toptracks_ratio(string $artist_id, array $tracks): float
     if ($total > 0) $ratio = $primary_hits / $total;
 
     return $ratio;
-}
-
-// Count own albums/singles (up to N items; lightweight)
-function count_primary_releases(array $albums, int $max_check = 3): int {
-    $count = 0;
-
-    foreach ($albums as $album) {
-        $group = strtolower((string) ($album['album_group'] ?? ''));
-        if ($group === 'album' || $group === 'single') {
-            $count++;
-            if ($count >= $max_check) {
-                break;
-            }
-        }
-    }
-
-    return $count;
-}
-
-// Count "appears_on" (co-artist) albums (one page is enough for a strong signal)
-function count_appears_on(array $albums, int $limit = 50): int {
-    $count = 0;
-
-    foreach ($albums as $album) {
-        $group = strtolower((string) ($album['album_group'] ?? ''));
-        if ($group === 'appears_on') {
-            $count++;
-            if ($count >= $limit) {
-                break;
-            }
-        }
-    }
-
-    return $count;
 }
 
 // Decisão final sem usar "followers"
@@ -951,7 +752,7 @@ function get_top_artists_by_genre(string $genre, int $limit = 50): array {
     
     // $albums = fetch_albums_parallel($token, $artist_ids);
 
-    // 🔎 Heurística BR (se ativada)
+    // Brazilian heuristic filter
     $rows = [];
     foreach ($artist_map as $aid => $fallback_name) {
 

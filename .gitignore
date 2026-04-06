@@ -37,3 +37,6 @@ debug.log
 Thumbs.db
 .vscode/
 .idea/
+
+.phpunit.result.cache
+vendor/

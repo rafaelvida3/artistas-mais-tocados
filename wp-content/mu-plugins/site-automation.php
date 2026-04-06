@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 /**
  * MU Plugin Name: Artist Pages Generator
+ * Author: Rafael Vida
  */
 
 if (!defined('ABSPATH')) {

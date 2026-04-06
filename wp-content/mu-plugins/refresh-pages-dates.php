@@ -1,7 +1,8 @@
 <?php
 /**
- * Plugin Name: Atualizar Data de Modificação das Páginas
- * Description: Atualiza semanalmente a data de modificação de páginas específicas por slug.
+ * Plugin Name: Refresh Page Modified Dates
+ * Description: Updates the modified date of specific pages weekly by slug.
+ * Author: Rafael Vida
  */
 
 if (!defined('ABSPATH')) {
@@ -11,7 +12,7 @@ if (!defined('ABSPATH')) {
 require_once __DIR__ . '/common/post-updates.php';
 
 /**
- * Slugs das páginas a atualizar.
+ * Target page slugs to update.
  */
 const TARGET_PAGE_SLUGS = [
     'artistas-mais-tocados-do-brasil',
@@ -23,7 +24,7 @@ const TARGET_PAGE_SLUGS = [
 ];
 
 /**
- * Registra o intervalo semanal no WP-Cron.
+ * Registers weekly interval in WP-Cron.
  */
 add_filter('cron_schedules', function (array $schedules): array {
     $schedules['weekly'] = [
@@ -35,7 +36,7 @@ add_filter('cron_schedules', function (array $schedules): array {
 });
 
 /**
- * Garante o agendamento semanal.
+ * Ensures weekly scheduling is set.
  */
 add_action('init', function (): void {
     if (!wp_next_scheduled('refresh_pages_event')) {
@@ -44,7 +45,7 @@ add_action('init', function (): void {
 });
 
 /**
- * Resolve os IDs das páginas-alvo.
+ * Resolves target page IDs from slugs.
  *
  * @return int[]
  */
@@ -73,7 +74,7 @@ function get_target_page_ids_by_slug(): array
 }
 
 /**
- * Atualiza as páginas semanalmente.
+ * Updates target pages weekly.
  */
 add_action('refresh_pages_event', function (): void {
     global $wpdb;

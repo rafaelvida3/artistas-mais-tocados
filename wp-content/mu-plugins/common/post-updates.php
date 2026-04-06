@@ -2,10 +2,6 @@
 
 declare(strict_types=1);
 
-if (!defined('ABSPATH')) {
-    exit;
-}
-
 function update_post_modified_date(int $post_id): bool {
     global $wpdb;
 
