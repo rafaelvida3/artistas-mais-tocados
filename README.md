@@ -252,16 +252,20 @@ composer test
 
 ## Deployment
 
-Changes pushed to `main` are validated and then deployed through GitHub Actions.
-The workflow runs code style checks, static analysis and tests before syncing the MU
-plugins to production through rsync.
+The project uses a simple cron-based deployment strategy on the production server.
+
+- The production server periodically syncs the `main` branch by fetching the latest
+  commit and resetting the working tree to match the remote branch.
+- Only the `main` branch is deployed.
+- Merges to `main` are protected by CI.
+- Pull requests must pass all required checks before merging.
+- WordPress cron is disabled in production and triggered externally by server cron.
 
 At deployment time, make sure the target environment already contains:
 
 - the required constants in `wp-config.php`
 - Rank Math installed and configured
 - the destination directory `wp-content/mu-plugins/`
-- any environment-specific files intentionally excluded from rsync
 
 ## Notes for maintainers
 
