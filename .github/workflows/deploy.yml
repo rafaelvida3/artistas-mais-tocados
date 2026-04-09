@@ -1,13 +1,16 @@
-name: Deploy MU Plugins
+name: CI
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
   workflow_dispatch:
 
 jobs:
-  test-and-deploy:
+  ci:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,14 +33,3 @@ jobs:
 
       - name: Run tests
         run: composer test
-
-      - name: Deploy MU plugins with rsync
-        uses: burnett01/rsync-deployments@v8
-        with:
-          switches: -avzr --delete --exclude='.git' --exclude='simba-tfa-encryption-key.php' --exclude='disable-aios.php'
-          path: wp-content/mu-plugins/
-          remote_path: ~/domains/artistasmaistocados.com.br/public_html/wp-content/mu-plugins/
-          remote_host: ${{ secrets.HOSTINGER_HOST }}
-          remote_user: ${{ secrets.HOSTINGER_USERNAME }}
-          remote_key: ${{ secrets.HOSTINGER_SSH_KEY }}
-          remote_port: ${{ secrets.HOSTINGER_PORT }}
