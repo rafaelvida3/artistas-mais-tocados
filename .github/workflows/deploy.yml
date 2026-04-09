@@ -20,7 +20,7 @@ jobs:
           php-version: 8.4
 
       - name: Install dependencies
-        run: composer update --no-interaction --prefer-dist
+        run: composer install --no-interaction --prefer-dist --no-progress --optimize-autoloader
 
       - name: Run code style check
         run: composer lint
