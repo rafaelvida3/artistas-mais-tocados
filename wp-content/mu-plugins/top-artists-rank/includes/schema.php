@@ -7,6 +7,7 @@ if (! defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/../src/schema_helpers.php';
+require_once __DIR__ . '/../src/schema_builders.php';
 
 add_filter('rank_math/json_ld', 'top_artists_filter_schema_graph', 99, 2);
 
@@ -22,12 +23,12 @@ function top_artists_filter_schema_graph(array $data, mixed $jsonld): array {
         $data[] = top_artists_build_breadcrumb_schema($ranking_context['breadcrumbs']);
 
         if ($ranking_context['mode'] === 'home') {
-            $genres = ['geral', 'funk', 'sertanejo', 'trap', 'piseiro', 'pagode'];
+            $genres = top_artists_get_supported_genres();
 
             foreach ($genres as $genre_slug) {
                 $schema = top_artists_build_ranking_item_list_schema(
                     $genre_slug,
-                    get_ranking_schema_title($genre_slug),
+                    top_artists_get_ranking_schema_title($genre_slug),
                     10,
                 );
 
@@ -84,26 +85,7 @@ function top_artists_get_ranking_schema_context(): ?array {
         ];
     }
 
-    $ranking_pages = [
-        'artistas-mais-tocados-do-brasil' => [
-            'genre' => 'geral',
-        ],
-        'artistas-de-funk-mais-tocados' => [
-            'genre' => 'funk',
-        ],
-        'artistas-de-sertanejo-mais-tocados' => [
-            'genre' => 'sertanejo',
-        ],
-        'artistas-de-trap-mais-tocados' => [
-            'genre' => 'trap',
-        ],
-        'artistas-de-piseiro-mais-tocados' => [
-            'genre' => 'piseiro',
-        ],
-        'artistas-de-pagode-mais-tocados' => [
-            'genre' => 'pagode',
-        ],
-    ];
+    $ranking_pages = top_artists_get_ranking_pages_map();
 
     foreach ($ranking_pages as $page_slug => $page_data) {
         if (! is_page($page_slug)) {
@@ -116,7 +98,7 @@ function top_artists_get_ranking_schema_context(): ?array {
 
         $top_artists = top_artists_get_top_artists_by_genre($page_data['genre'], 50);
         $item_count = is_array($top_artists) ? top_artists_count_valid_artists($top_artists) : 0;
-        $schema_title = build_dynamic_schema_title($page_data['genre'], $item_count);
+        $schema_title = top_artists_build_dynamic_schema_title($page_data['genre'], $item_count);
 
         return [
             'mode' => 'genre',
@@ -241,26 +223,6 @@ function top_artists_remove_breadcrumb_list_schema(array $data): array {
     return $data;
 }
 
-function top_artists_build_breadcrumb_schema(array $breadcrumbs): array {
-    $items = [];
-
-    foreach ($breadcrumbs as $index => $breadcrumb) {
-        $items[] = [
-            '@type' => 'ListItem',
-            'position' => $index + 1,
-            'name' => $breadcrumb['name'],
-            'item' => [
-                '@id' => $breadcrumb['url'],
-            ],
-        ];
-    }
-
-    return [
-        '@type' => 'BreadcrumbList',
-        'itemListElement' => $items,
-    ];
-}
-
 function top_artists_build_ranking_item_list_schema(string $genre_slug, string $title, int $limit): ?array {
     if (! function_exists('top_artists_get_top_artists_by_genre')) {
         return null;
@@ -268,58 +230,15 @@ function top_artists_build_ranking_item_list_schema(string $genre_slug, string $
 
     $top_artists = top_artists_get_top_artists_by_genre($genre_slug, $limit);
 
-    if (empty($top_artists) || ! is_array($top_artists)) {
+    if (! is_array($top_artists) || $top_artists === []) {
         return null;
     }
 
-    $items = [];
-
-    foreach ($top_artists as $index => $artist) {
-        $artist_name = isset($artist['artist_name']) ? (string) $artist['artist_name'] : '';
-        $spotify_url = isset($artist['spotify_url']) ? (string) $artist['spotify_url'] : '';
-        $artist_image = isset($artist['image_url'])
-            ? esc_url_raw((string) $artist['image_url'])
-            : '';
-
-        if ($artist_name === '') {
-            continue;
-        }
-
-        $music_group = [
-            '@type' => 'MusicGroup',
-            'name' => $artist_name,
-        ];
-
-        if ($genre_slug !== 'geral') {
-            $music_group['genre'] = $genre_slug;
-        }
-
-        if ($artist_image !== '') {
-            $music_group['image'] = $artist_image;
-        }
-
-        if ($spotify_url !== '') {
-            $music_group['sameAs'] = [esc_url_raw($spotify_url)];
-        }
-
-        $items[] = [
-            '@type' => 'ListItem',
-            'position' => $index + 1,
-            'item' => $music_group,
-        ];
-    }
-
-    if ($items === []) {
-        return null;
-    }
-
-    return [
-        '@type' => 'ItemList',
-        'name' => $title,
-        'itemListOrder' => 'Descending',
-        'numberOfItems' => count($items),
-        'itemListElement' => $items,
-    ];
+    return top_artists_build_ranking_item_list_schema_from_artists(
+        $genre_slug,
+        $title,
+        $top_artists,
+    );
 }
 
 function top_artists_build_artist_music_group_schema(array $artist_context): array {

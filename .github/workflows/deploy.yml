@@ -20,13 +20,16 @@ jobs:
           php-version: 8.4
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: composer update --no-interaction --prefer-dist
 
       - name: Run code style check
         run: composer lint
 
+      - name: Run static analysis
+        run: composer analyse
+
       - name: Run tests
-        run: vendor/bin/phpunit
+        run: composer test
 
       - name: Deploy MU plugins with rsync
         uses: burnett01/rsync-deployments@v8

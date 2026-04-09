@@ -13,15 +13,7 @@ if (! defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/common/post-updates.php';
-
-const REFRESH_PAGES_TARGET_SLUGS = [
-    'artistas-mais-tocados-do-brasil',
-    'artistas-de-funk-mais-tocados',
-    'artistas-de-sertanejo-mais-tocados',
-    'artistas-de-trap-mais-tocados',
-    'artistas-de-piseiro-mais-tocados',
-    'artistas-de-pagode-mais-tocados',
-];
+require_once __DIR__ . '/top-artists-rank/src/project_config.php';
 
 add_filter('cron_schedules', 'refresh_pages_register_weekly_interval');
 
@@ -37,6 +29,8 @@ function refresh_pages_register_weekly_interval(array $schedules): array {
 add_action('init', 'refresh_pages_schedule_event');
 
 function refresh_pages_schedule_event(): void {
+    // WP-Cron is used only for lightweight internal scheduling.
+    // External cron remains the primary execution trigger.
     if (! wp_next_scheduled('refresh_pages_event')) {
         wp_schedule_event(time(), 'weekly', 'refresh_pages_event');
     }
@@ -53,7 +47,7 @@ function refresh_pages_get_target_page_ids_by_slug(): array {
         $page_ids[] = $front_page_id;
     }
 
-    foreach (REFRESH_PAGES_TARGET_SLUGS as $slug) {
+    foreach (top_artists_get_refresh_target_slugs() as $slug) {
         $page = get_page_by_path($slug);
 
         if (! $page instanceof \WP_Post) {
@@ -86,10 +80,10 @@ function refresh_pages_update_target_pages(): void {
             continue;
         }
 
-        update_post_modified_date($page_id);
+        top_artists_update_post_modified_date($page_id);
     }
 
-    if (class_exists('\RankMath\Sitemap\Cache')) {
+    if (class_exists("\RankMath\Sitemap\Cache")) {
         \RankMath\Sitemap\Cache::invalidate_storage();
     }
 }

@@ -6,6 +6,8 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
+require_once __DIR__ . '/project_config.php';
+
 if (! defined('TOP_ARTISTS_REQUEST_TIMEOUT')) {
     define('TOP_ARTISTS_REQUEST_TIMEOUT', 10);
 }

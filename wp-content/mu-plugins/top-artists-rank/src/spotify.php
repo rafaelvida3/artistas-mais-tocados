@@ -5,40 +5,6 @@ declare(strict_types=1);
 use WpOrg\Requests\Requests;
 
 /**
- * @return array<string, array<string>>
- */
-function top_artists_get_curated_playlists_map(): array {
-    return [
-        'funk' => [
-            '3tXQEdXHBCnHHfjGgbNFQ0',
-            '1cfmJq1vlOvxkrPRwSl873',
-        ],
-        'trap' => [
-            '3rPugprs5WtLcNH1VqXJDx',
-            '3QfUDYpxCgQM77RY7WK890',
-        ],
-        'sertanejo' => [
-            '3rPugprs5WtLcNH1VqXJDx',
-            '1KZkxSv0kMXOGYS4lLl2GO',
-        ],
-        'piseiro' => [
-            '3xwHGwphocKJ7vayoFSqCS',
-            '7pJUXntr3BMLFFQx4Whkwh',
-        ],
-        'pagode' => [
-            '05341M5VjVdmig3M7NGTOd',
-            '7g7vsEvcNEdRDGNuBL4SmY',
-        ],
-        'geral' => [
-            '2UgUYCjD5nuBGyWRaWBoUf',
-            '27KCnBs5sZTXgaF4WIy5XQ',
-            '1msY3c9fzgE3V11aNhsq2O',
-            '4sOqZUOconQiyH55o3Kz7x',
-        ],
-    ];
-}
-
-/**
  * @return array<string>
  */
 function top_artists_get_playlists_for_genre(string $genre): array {
@@ -57,7 +23,6 @@ function top_artists_fetch_artist_top_tracks_parallel(string $token, array $arti
         'Authorization' => 'Bearer ' . $token,
         'Accept' => 'application/json',
     ];
-
     $requests = [];
     $prefilled = [];
 
@@ -91,7 +56,9 @@ function top_artists_fetch_artist_top_tracks_parallel(string $token, array $arti
     $fetched = top_artists_request_multiple_json(
         $requests,
         static function (string $artist_id, array $json): ?array {
-            $tracks = isset($json['tracks']) && is_array($json['tracks']) ? $json['tracks'] : null;
+            $tracks = isset($json['tracks']) && is_array($json['tracks'])
+                ? $json['tracks']
+                : null;
 
             if (is_array($tracks)) {
                 set_transient('artist_top_tracks_' . $artist_id, $tracks, 12 * HOUR_IN_SECONDS);
@@ -118,7 +85,6 @@ function top_artists_fetch_playlist_tracks_parallel(
         'Authorization' => 'Bearer ' . $token,
         'Accept' => 'application/json',
     ];
-
     $requests = [];
     $prefilled = [];
 
@@ -135,7 +101,10 @@ function top_artists_fetch_playlist_tracks_parallel(
             'url' => add_query_arg(
                 [
                     'limit' => $limit,
-                    'fields' => 'items(added_at,track(artists(id,name),id,name,album(release_date,release_date_precision))),next',
+                    'fields' => (
+                        'items(added_at,track(artists(id,name),id,name,'
+                        . 'album(release_date,release_date_precision))),next'
+                    ),
                     'market' => TOP_ARTISTS_MARKET,
                 ],
                 TOP_ARTISTS_API_BASE_URL . '/playlists/' . $playlist_id . '/tracks',
@@ -155,7 +124,9 @@ function top_artists_fetch_playlist_tracks_parallel(
     $fetched = top_artists_request_multiple_json(
         $requests,
         static function (string $playlist_id, array $json) use ($limit): array {
-            $items = isset($json['items']) && is_array($json['items']) ? $json['items'] : [];
+            $items = isset($json['items']) && is_array($json['items'])
+                ? $json['items']
+                : [];
             $tracks = [];
 
             foreach ($items as $item) {
@@ -193,7 +164,6 @@ function top_artists_fetch_artists_parallel(string $token, array $artist_ids): a
         'Authorization' => 'Bearer ' . $token,
         'Accept' => 'application/json',
     ];
-
     $unique_artist_ids = [];
 
     foreach ($artist_ids as $artist_id) {
@@ -241,7 +211,9 @@ function top_artists_fetch_artists_parallel(string $token, array $artist_ids): a
     $fetched_batches = top_artists_request_multiple_json(
         $requests,
         static function (string $batch_key, array $json): array {
-            $artists = isset($json['artists']) && is_array($json['artists']) ? $json['artists'] : [];
+            $artists = isset($json['artists']) && is_array($json['artists'])
+                ? $json['artists']
+                : [];
             $parsed_batch = [];
 
             foreach ($artists as $artist) {
@@ -260,11 +232,12 @@ function top_artists_fetch_artists_parallel(string $token, array $artist_ids): a
                 $images = isset($artist['images']) && is_array($artist['images'])
                     ? $artist['images']
                     : [];
-
                 $parsed_artist = [
                     'popularity' => (int) ($artist['popularity'] ?? 0),
                     'name' => (string) ($artist['name'] ?? ''),
-                    'image_url' => isset($images[0]['url']) ? (string) $images[0]['url'] : '',
+                    'image_url' => isset($images[0]['url'])
+                        ? (string) $images[0]['url']
+                        : '',
                     'spotify_url' => 'https://open.spotify.com/artist/' . $artist_id,
                     'genres' => isset($artist['genres']) && is_array($artist['genres'])
                         ? $artist['genres']
@@ -302,7 +275,6 @@ function top_artists_fetch_artists_parallel(string $token, array $artist_ids): a
  */
 function top_artists_get_top_artists_by_genre(string $genre, int $limit = 50): array {
     $limit = max(1, $limit);
-
     $token = top_artists_get_spotify_token();
 
     if ($token === '') {
@@ -311,91 +283,35 @@ function top_artists_get_top_artists_by_genre(string $genre, int $limit = 50): a
 
     $playlist_ids = top_artists_get_playlists_for_genre($genre);
     $playlist_tracks = top_artists_fetch_playlist_tracks_parallel($token, $playlist_ids, 50);
+    $artist_candidates = top_artists_collect_artist_candidates_from_playlist_tracks(
+        $playlist_tracks,
+        $genre,
+    );
 
-    /** @var array<string, string> $artist_names_by_id */
-    $artist_names_by_id = [];
-
-    foreach ($playlist_tracks as $tracks) {
-        if (! is_array($tracks)) {
-            continue;
-        }
-
-        foreach ($tracks as $track) {
-            if (! is_array($track) || ! isset($track['artists']) || ! is_array($track['artists'])) {
-                continue;
-            }
-
-            foreach ($track['artists'] as $artist) {
-                if (! is_array($artist) || ! isset($artist['id'], $artist['name'])) {
-                    continue;
-                }
-
-                $artist_id = (string) $artist['id'];
-
-                if ($artist_id === '' || artist_is_denied_for_genre($artist_id, $genre)) {
-                    continue;
-                }
-
-                $artist_names_by_id[$artist_id] = (string) $artist['name'];
-            }
-        }
-    }
-
-    if ($artist_names_by_id === []) {
+    if ($artist_candidates === []) {
         return [];
     }
 
     $artist_details_by_id = top_artists_fetch_artists_parallel(
         $token,
-        array_keys($artist_names_by_id),
+        array_keys($artist_candidates),
     );
-
-    $rows = [];
-
-    foreach ($artist_names_by_id as $artist_id => $fallback_name) {
-        $artist_details = $artist_details_by_id[$artist_id] ?? [
-            'popularity' => 0,
-            'name' => $fallback_name,
-            'image_url' => '',
-            'spotify_url' => 'https://open.spotify.com/artist/' . $artist_id,
-            'genres' => [],
-        ];
-
-        $genres = isset($artist_details['genres']) && is_array($artist_details['genres'])
-            ? $artist_details['genres']
-            : [];
-
-        if (! artist_matches_genre($genre, $genres)) {
-            continue;
-        }
-
-        $rows[] = [
-            'artist_id' => $artist_id,
-            'artist_name' => (string) ($artist_details['name'] ?: $fallback_name),
-            'popularity' => (int) $artist_details['popularity'],
-            'image_url' => (string) $artist_details['image_url'],
-            'spotify_url' => (string) $artist_details['spotify_url'],
-        ];
-    }
+    $rows = top_artists_build_ranked_artist_rows($artist_candidates, $artist_details_by_id, $genre);
 
     if ($rows === []) {
         return [];
     }
 
-    usort(
-        $rows,
-        static function (array $left, array $right): int {
-            $popularity_comparison = $right['popularity'] <=> $left['popularity'];
+    $trimmed_rows = array_slice($rows, 0, $limit);
 
-            if ($popularity_comparison !== 0) {
-                return $popularity_comparison;
-            }
+    return array_map(
+        static function (array $row): array {
+            unset($row['score']);
 
-            return strcmp((string) $left['artist_name'], (string) $right['artist_name']);
+            return $row;
         },
+        $trimmed_rows,
     );
-
-    return array_slice($rows, 0, $limit);
 }
 
 function top_artists_get_artist_context_by_spotify_id(string $artist_id): array {
@@ -441,7 +357,7 @@ function top_artists_get_artist_page_url_by_spotify_id(string $artist_id): strin
         return '';
     }
 
-    $page_id = get_existing_artist_page_id($artist_id);
+    $page_id = top_artists_get_existing_artist_page_id($artist_id);
 
     if ($page_id <= 0) {
         return '';

@@ -1,6 +1,7 @@
 # Top Artists Rank for WordPress
 
-MU plugins used to power an automated music-ranking site in WordPress, with focus on SEO, caching, content generation and operational simplicity.
+MU plugins used to power an automated music-ranking site in WordPress, with focus on
+SEO, caching, content generation and operational simplicity.
 
 ## Production
 
@@ -11,17 +12,31 @@ https://artistasmaistocados.com.br
 ## What this project solves
 
 The site needs ranking pages that stay updated without a manual editorial workflow.
-Instead of publishing static lists by hand, the project pulls curated Spotify sources,
-normalizes the artist data, builds ranking widgets, generates internal artist pages and
-keeps the main SEO pages fresh.
+Instead of publishing static lists by hand, the project reads curated Spotify playlists,
+collects the artists found in those playlists, fetches artist details, filters the result
+by genre rules and renders ranking pages and artist pages inside WordPress.
 
 This makes the project closer to a lightweight content automation system than to a
 traditional WordPress customization.
 
+## How the ranking works today
+
+The current ranking flow is intentionally simple and matches the code in this repository:
+
+1. load a curated playlist map for each genre
+2. fetch playlist tracks from Spotify and collect artist IDs found there
+3. deduplicate artists while keeping an internal occurrence score per playlist pass
+4. fetch artist metadata from Spotify
+5. apply denylist and genre-matching heuristics
+6. order the final ranking by Spotify popularity, with artist name as tie-breaker
+
+The internal score helps document how often an artist appears across curated sources, but
+it is not the final ordering criterion. The final ranking is still sorted by popularity.
+
 ## Core responsibilities
 
-- aggregate curated Spotify playlists by genre
-- rank artists by popularity and genre consistency
+- read curated Spotify playlists by genre
+- order final rankings by Spotify popularity after genre filtering
 - fetch top tracks and artist metadata from Spotify
 - enrich artist pages with biography data from Last.fm
 - create internal artist pages automatically inside WordPress
@@ -48,16 +63,20 @@ External API responses are cached with WordPress transients. This keeps the
 implementation simple, avoids unnecessary infrastructure and reduces repeated calls to
 Spotify and Last.fm.
 
-### External cron and small batches
+### External cron with lightweight WP-Cron support
 
-Artist-page generation uses a seed/process flow with a lock transient and small batches.
-This avoids long-running requests and fits shared-hosting constraints better than trying
-to do everything in one request.
+The project primarily relies on external cron for execution. A small internal WP-Cron
+schedule is still used for lightweight recurring tasks:
+
+```php
+// WP-Cron is used only for lightweight internal scheduling.
+// External cron remains the primary execution trigger.
+```
 
 ### Isolated pure helpers for tests
 
-The most stable business rules that do not depend on WordPress runtime were extracted to
-small helper files and covered with PHPUnit tests. This keeps the tests fast and cheap.
+The business rules that do not depend on the WordPress runtime were extracted to pure
+helper files. This keeps tests and static analysis fast, cheap and predictable.
 
 ## Current repository structure
 
@@ -71,10 +90,14 @@ wp-content/mu-plugins/
 │   │   └── schema.php
 │   └── src/
 │       ├── artist_bio.php
+│       ├── automation_helpers.php
 │       ├── config.php
 │       ├── http.php
+│       ├── project_config.php
+│       ├── ranking_engine.php
 │       ├── ranking_helpers.php
 │       ├── renderers.php
+│       ├── schema_builders.php
 │       ├── schema_helpers.php
 │       ├── shortcodes.php
 │       └── spotify.php
@@ -84,31 +107,36 @@ wp-content/mu-plugins/
 └── top-artists-rank.php
 ```
 
-## Why this is relevant as an engineering sample
+## Tooling
 
-This project demonstrates practical trade-offs instead of framework-heavy architecture:
+The repository includes:
 
-- integration with external APIs under caching constraints
-- WordPress-oriented modularization without overengineering
-- SEO-aware content generation and schema customization
-- operational tooling for cron, sitemap refresh and indexing workflows
-- CI-based deployment for production updates
+- `composer lint` for PHP CS Fixer checks
+- `composer analyse` for PHPStan static analysis on pure PHP helpers
+- `composer test` for PHPUnit coverage of ranking, schema and batch helpers
+
+The project also requires `ext-intl` because genre normalization uses
+`transliterator_transliterate()` for accent-insensitive comparisons.
 
 ## Testing
 
-Tests cover pure helper logic extracted from WordPress-dependent code, such as:
+Tests cover:
 
-- ranking normalization and filtering helpers
-- denylist behavior
-- schema title helpers
+- genre normalization, denylist checks and genre heuristics
+- artist candidate aggregation and internal score/frequency tracking
+- ranking row ordering logic
+- schema title and ItemList builders
+- batch and lock window helpers for artist-page automation
 
 Run locally with:
 
 ```bash
+composer analyse
 composer test
 ```
 
 ## Deployment
 
 Changes pushed to `main` are validated and then deployed through GitHub Actions.
-The workflow syncs the MU plugins directly to production using rsync.
+The workflow runs lint, static analysis and tests before syncing the MU plugins to
+production through rsync.

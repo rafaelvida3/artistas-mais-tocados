@@ -40,3 +40,5 @@ Thumbs.db
 
 .phpunit.result.cache
 vendor/
+.php-cs-fixer.cache
+.phpstan.result.cache

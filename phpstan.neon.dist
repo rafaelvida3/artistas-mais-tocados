@@ -1,0 +1,9 @@
+parameters:
+    level: 5
+    paths:
+        - wp-content/mu-plugins/top-artists-rank/src/project_config.php
+        - wp-content/mu-plugins/top-artists-rank/src/ranking_helpers.php
+        - wp-content/mu-plugins/top-artists-rank/src/ranking_engine.php
+        - wp-content/mu-plugins/top-artists-rank/src/schema_helpers.php
+        - wp-content/mu-plugins/top-artists-rank/src/schema_builders.php
+        - wp-content/mu-plugins/top-artists-rank/src/automation_helpers.php

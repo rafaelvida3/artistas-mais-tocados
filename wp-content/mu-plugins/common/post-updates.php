@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-function update_post_modified_date(int $post_id): bool {
+function top_artists_update_post_modified_date(int $post_id): bool {
     global $wpdb;
 
     $post = get_post($post_id);
@@ -15,7 +15,6 @@ function update_post_modified_date(int $post_id): bool {
 
     $local = current_time('mysql');
     $utc = current_time('mysql', 1);
-
     $updated = $wpdb->update(
         $wpdb->posts,
         [

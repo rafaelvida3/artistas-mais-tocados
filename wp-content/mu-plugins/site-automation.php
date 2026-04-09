@@ -12,6 +12,8 @@ if (! defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/common/post-updates.php';
+require_once __DIR__ . '/top-artists-rank/src/project_config.php';
+require_once __DIR__ . '/top-artists-rank/src/automation_helpers.php';
 
 const ARTIST_PAGES_BATCH_SIZE = 10;
 const ARTIST_PAGES_PARENT_SLUG = 'artista';
@@ -77,10 +79,10 @@ HTML;
  * @return string[]
  */
 function artist_pages_get_seed_genres(): array {
-    return ['geral', 'funk', 'sertanejo', 'trap', 'piseiro', 'pagode'];
+    return top_artists_get_supported_genres();
 }
 
-function get_existing_artist_page_id(string $spotify_id): int {
+function top_artists_get_existing_artist_page_id(string $spotify_id): int {
     $pages = get_posts([
         'post_type' => 'page',
         'fields' => 'ids',
@@ -185,7 +187,7 @@ function artist_pages_create_page(array $artist, int $parent_id): int {
         return 0;
     }
 
-    if (get_existing_artist_page_id($artist_id) > 0) {
+    if (top_artists_get_existing_artist_page_id($artist_id) > 0) {
         return 0;
     }
 
@@ -281,7 +283,7 @@ function artist_pages_handle_process_request(): void {
         exit('Forbidden');
     }
 
-    if (get_transient(ARTIST_PAGES_LOCK_TRANSIENT)) {
+    if (top_artists_is_batch_lock_active(get_transient(ARTIST_PAGES_LOCK_TRANSIENT))) {
         exit('Locked');
     }
 
@@ -308,7 +310,8 @@ function artist_pages_handle_process_request(): void {
         exit('Parent page error');
     }
 
-    $batch = array_slice($queue, $offset, ARTIST_PAGES_BATCH_SIZE);
+    $batch_window = top_artists_build_batch_window($queue, $offset, ARTIST_PAGES_BATCH_SIZE);
+    $batch = $batch_window['batch'];
 
     foreach ($batch as $artist) {
         try {
@@ -322,10 +325,10 @@ function artist_pages_handle_process_request(): void {
                 continue;
             }
 
-            $existing_id = get_existing_artist_page_id($artist_id);
+            $existing_id = top_artists_get_existing_artist_page_id($artist_id);
 
             if ($existing_id > 0) {
-                update_post_modified_date($existing_id);
+                top_artists_update_post_modified_date($existing_id);
                 $has_changes = true;
                 continue;
             }
@@ -350,10 +353,10 @@ function artist_pages_handle_process_request(): void {
         \RankMath\Sitemap\Cache::invalidate_storage();
     }
 
-    $offset += count($batch);
+    $offset = $batch_window['next_offset'];
     update_option(ARTIST_PAGES_OFFSET_OPTION, $offset);
 
-    if ($offset >= count($queue)) {
+    if ($batch_window['is_complete']) {
         delete_option(ARTIST_PAGES_QUEUE_OPTION);
         delete_option(ARTIST_PAGES_OFFSET_OPTION);
         delete_transient(ARTIST_PAGES_LOCK_TRANSIENT);
