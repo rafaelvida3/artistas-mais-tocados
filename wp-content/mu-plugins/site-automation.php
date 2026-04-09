@@ -7,23 +7,23 @@ declare(strict_types=1);
  * Author: Rafael Vida
  */
 
-if (!defined('ABSPATH')) {
+if (! defined('ABSPATH')) {
     exit;
 }
 
 require_once __DIR__ . '/common/post-updates.php';
 
-const ARTIST_BATCH_SIZE = 10;
-const ARTIST_PARENT_SLUG = 'artista';
-const ARTIST_QUEUE_OPTION = 'artist_queue';
-const ARTIST_OFFSET_OPTION = 'artist_offset';
-const ARTIST_LOCK_TRANSIENT = 'artist_lock';
-const ARTIST_LOCK_TTL = 120;
+const ARTIST_PAGES_BATCH_SIZE = 10;
+const ARTIST_PAGES_PARENT_SLUG = 'artista';
+const ARTIST_PAGES_QUEUE_OPTION = 'artist_queue';
+const ARTIST_PAGES_OFFSET_OPTION = 'artist_offset';
+const ARTIST_PAGES_LOCK_TRANSIENT = 'artist_lock';
+const ARTIST_PAGES_LOCK_TTL = 120;
 
-function log_artist_pages_error(string $message, array $context = []): void {
+function artist_pages_log_error(string $message, array $context = []): void {
     $prefix = '[artist-pages] ';
 
-    if ($context) {
+    if ($context !== []) {
         $json_context = wp_json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $message .= ' :: ' . ($json_context ?: '');
     }
@@ -31,11 +31,8 @@ function log_artist_pages_error(string $message, array $context = []): void {
     error_log($prefix . $message);
 }
 
-/**
- * Ensure parent page exists
- */
-function ensure_artist_parent_page(): int {
-    $page = get_page_by_path(ARTIST_PARENT_SLUG);
+function artist_pages_ensure_parent_page(): int {
+    $page = get_page_by_path(ARTIST_PAGES_PARENT_SLUG);
 
     if ($page instanceof \WP_Post) {
         return (int) $page->ID;
@@ -54,15 +51,15 @@ HTML;
 
     $inserted_page_id = wp_insert_post([
         'post_title' => 'Artistas',
-        'post_name' => ARTIST_PARENT_SLUG,
+        'post_name' => ARTIST_PAGES_PARENT_SLUG,
         'post_status' => 'publish',
         'post_type' => 'page',
         'post_content' => $content,
     ], true);
 
     if ($inserted_page_id instanceof \WP_Error) {
-        log_artist_pages_error('Failed to create artist parent page', [
-            'slug' => ARTIST_PARENT_SLUG,
+        artist_pages_log_error('Failed to create artist parent page', [
+            'slug' => ARTIST_PAGES_PARENT_SLUG,
             'error_message' => $inserted_page_id->get_error_message(),
             'error_data' => $inserted_page_id->get_error_data(),
         ]);
@@ -71,51 +68,18 @@ HTML;
     }
 
     $page_id = (int) $inserted_page_id;
-
     update_post_meta($page_id, 'rank_math_rich_snippet', 'off');
 
     return $page_id;
 }
 
 /**
- * Genres used for seed
+ * @return string[]
  */
-function get_seed_genres(): array {
+function artist_pages_get_seed_genres(): array {
     return ['geral', 'funk', 'sertanejo', 'trap', 'piseiro', 'pagode'];
 }
 
-/**
- * Get all artists from rankings (deduplicated)
- */
-function get_all_ranked_artists(): array {
-    if (!function_exists('get_top_artists_by_genre')) {
-        return [];
-    }
-
-    $artists = [];
-
-    foreach (get_seed_genres() as $genre) {
-        $list = get_top_artists_by_genre($genre, 50);
-
-        if (!is_array($list)) continue;
-
-        foreach ($list as $artist) {
-            if (!is_array($artist)) continue;
-
-            $id = $artist['artist_id'] ?? '';
-
-            if (!$id) continue;
-
-            $artists[$id] = $artist;
-        }
-    }
-
-    return array_values($artists);
-}
-
-/**
- * Find existing page
- */
 function get_existing_artist_page_id(string $spotify_id): int {
     $pages = get_posts([
         'post_type' => 'page',
@@ -129,9 +93,41 @@ function get_existing_artist_page_id(string $spotify_id): int {
 }
 
 /**
- * Get artist Spotify URL
+ * @return array<int, array<string, mixed>>
  */
-function get_artist_spotify_url(array $artist): string {
+function artist_pages_get_all_ranked_artists(): array {
+    if (! function_exists('top_artists_get_top_artists_by_genre')) {
+        return [];
+    }
+
+    $artists_by_id = [];
+
+    foreach (artist_pages_get_seed_genres() as $genre) {
+        $ranked_artists = top_artists_get_top_artists_by_genre($genre, 50);
+
+        if (! is_array($ranked_artists)) {
+            continue;
+        }
+
+        foreach ($ranked_artists as $artist) {
+            if (! is_array($artist)) {
+                continue;
+            }
+
+            $artist_id = isset($artist['artist_id']) ? (string) $artist['artist_id'] : '';
+
+            if ($artist_id === '') {
+                continue;
+            }
+
+            $artists_by_id[$artist_id] = $artist;
+        }
+    }
+
+    return array_values($artists_by_id);
+}
+
+function artist_pages_get_spotify_url(array $artist): string {
     if (isset($artist['spotify_url']) && is_string($artist['spotify_url']) && $artist['spotify_url'] !== '') {
         return $artist['spotify_url'];
     }
@@ -141,7 +137,7 @@ function get_artist_spotify_url(array $artist): string {
     return is_string($spotify_url) ? $spotify_url : '';
 }
 
-function build_artist_page_blocks_content(): string {
+function artist_pages_build_blocks_content(): string {
     return <<<'HTML'
 <!-- wp:columns {"align":"wide","verticalAlignment":"center","className":"ranking-layout","style":{"spacing":{"blockGap":{"left":"var:preset|spacing|50"}}}} -->
 <div class="wp-block-columns alignwide are-vertically-aligned-center ranking-layout">
@@ -175,163 +171,158 @@ function build_artist_page_blocks_content(): string {
 HTML;
 }
 
-/**
- * Create page
- */
-function create_artist_page(array $artist, int $parent_id): int {
-    $id = isset($artist['artist_id']) ? (string) $artist['artist_id'] : '';
-    $name = isset($artist['artist_name']) ? (string) $artist['artist_name'] : '';
+function artist_pages_create_page(array $artist, int $parent_id): int {
+    $artist_id = isset($artist['artist_id']) ? (string) $artist['artist_id'] : '';
+    $artist_name = isset($artist['artist_name']) ? (string) $artist['artist_name'] : '';
 
-    if ($id === '' || $name === '' || $parent_id <= 0) {
-        log_artist_pages_error('Invalid artist data for page creation', [
-            'artist_id' => $id,
-            'artist_name' => $name,
+    if ($artist_id === '' || $artist_name === '' || $parent_id <= 0) {
+        artist_pages_log_error('Invalid artist data for page creation', [
+            'artist_id' => $artist_id,
+            'artist_name' => $artist_name,
             'parent_id' => $parent_id,
         ]);
+
         return 0;
     }
 
-    if (get_existing_artist_page_id($id) > 0) {
+    if (get_existing_artist_page_id($artist_id) > 0) {
         return 0;
     }
-
-    $content = build_artist_page_blocks_content();
 
     $inserted_post_id = wp_insert_post([
-        'post_title' => $name,
-        'post_name' => sanitize_title($name),
+        'post_title' => $artist_name,
+        'post_name' => sanitize_title($artist_name),
         'post_status' => 'publish',
         'post_type' => 'page',
         'post_parent' => $parent_id,
-        'post_content' => $content,
+        'post_content' => artist_pages_build_blocks_content(),
     ], true);
 
     if ($inserted_post_id instanceof \WP_Error) {
-        log_artist_pages_error('Failed to create artist page', [
-            'artist_id' => $id,
-            'artist_name' => $name,
+        artist_pages_log_error('Failed to create artist page', [
+            'artist_id' => $artist_id,
+            'artist_name' => $artist_name,
             'parent_id' => $parent_id,
             'error_message' => $inserted_post_id->get_error_message(),
             'error_data' => $inserted_post_id->get_error_data(),
         ]);
+
         return 0;
     }
 
     $post_id = (int) $inserted_post_id;
+    update_post_meta($post_id, 'artist_spotify_id', $artist_id);
 
-    update_post_meta($post_id, 'artist_spotify_id', $id);
-
-    $spotify_url = get_artist_spotify_url($artist);
+    $spotify_url = artist_pages_get_spotify_url($artist);
 
     if ($spotify_url !== '') {
         update_post_meta($post_id, 'artist_spotify_url', esc_url_raw($spotify_url));
     }
 
-    $name_lower = mb_strtolower($name, 'UTF-8');
-
+    $artist_name_lower = mb_strtolower($artist_name, 'UTF-8');
     $keywords = [
-        $name_lower,
-        $name_lower . ' spotify',
-        $name_lower . ' músicas',
-        $name_lower . ' músicas mais tocadas',
-        $name_lower . ' músicas mais ouvidas',
+        $artist_name_lower,
+        $artist_name_lower . ' spotify',
+        $artist_name_lower . ' músicas',
+        $artist_name_lower . ' músicas mais tocadas',
+        $artist_name_lower . ' músicas mais ouvidas',
     ];
 
     update_post_meta($post_id, 'rank_math_focus_keyword', implode(', ', $keywords));
-    update_post_meta($post_id, 'rank_math_title', $name . ' %sep% Músicas mais tocadas no Spotify');
-    update_post_meta($post_id, 'rank_math_description', 'Veja as músicas mais tocadas de ' . $name . ' no Spotify, com links diretos para ouvir cada faixa.');
+    update_post_meta($post_id, 'rank_math_title', $artist_name . ' %sep% Músicas mais tocadas no Spotify');
+    update_post_meta(
+        $post_id,
+        'rank_math_description',
+        'Veja as músicas mais tocadas de ' . $artist_name . ' no Spotify, com links diretos para ouvir cada faixa.',
+    );
     update_post_meta($post_id, 'rank_math_rich_snippet', 'off');
 
     return $post_id;
 }
 
-/**
- * Seed queue
- */
-function seed_artist_queue(): void {
-    $artists = get_all_ranked_artists();
-
-    update_option(ARTIST_QUEUE_OPTION, $artists);
-    update_option(ARTIST_OFFSET_OPTION, 0);
+function artist_pages_seed_queue(): void {
+    update_option(ARTIST_PAGES_QUEUE_OPTION, artist_pages_get_all_ranked_artists());
+    update_option(ARTIST_PAGES_OFFSET_OPTION, 0);
 }
 
-/**
- * Validate key
- */
-function has_valid_cron_key(): bool {
-    if (!defined('CRON_SECRET')) return false;
+function artist_pages_has_valid_cron_key(): bool {
+    if (! defined('CRON_SECRET')) {
+        return false;
+    }
 
     $key = $_GET['key'] ?? '';
 
-    return $key && hash_equals(CRON_SECRET, $key);
+    return is_string($key) && $key !== '' && hash_equals(CRON_SECRET, $key);
 }
 
-/**
- * Seed endpoint
- */
-function handle_seed_request(): void {
-    if (!isset($_GET['artist_pages_seed'])) return;
+function artist_pages_handle_seed_request(): void {
+    if (! isset($_GET['artist_pages_seed'])) {
+        return;
+    }
 
-    if (!has_valid_cron_key()) {
+    if (! artist_pages_has_valid_cron_key()) {
         status_header(403);
         exit('Forbidden');
     }
 
-    seed_artist_queue();
-
+    artist_pages_seed_queue();
     exit('Seed OK');
 }
-add_action('init', 'handle_seed_request', 999);
 
-/**
- * Process batch
- */
-function handle_process_request(): void {
-    if (!isset($_GET['artist_pages_process'])) return;
+add_action('init', 'artist_pages_handle_seed_request', 999);
 
-    if (!has_valid_cron_key()) {
+function artist_pages_handle_process_request(): void {
+    if (! isset($_GET['artist_pages_process'])) {
+        return;
+    }
+
+    if (! artist_pages_has_valid_cron_key()) {
         status_header(403);
         exit('Forbidden');
     }
 
-    if (get_transient(ARTIST_LOCK_TRANSIENT)) {
+    if (get_transient(ARTIST_PAGES_LOCK_TRANSIENT)) {
         exit('Locked');
     }
 
-    set_transient(ARTIST_LOCK_TRANSIENT, 1, ARTIST_LOCK_TTL);
+    set_transient(ARTIST_PAGES_LOCK_TRANSIENT, 1, ARTIST_PAGES_LOCK_TTL);
 
-    $queue = get_option(ARTIST_QUEUE_OPTION, []);
-    $offset = (int) get_option(ARTIST_OFFSET_OPTION, 0);
+    $queue = get_option(ARTIST_PAGES_QUEUE_OPTION, []);
+    $offset = (int) get_option(ARTIST_PAGES_OFFSET_OPTION, 0);
     $has_changes = false;
 
-    if (!$queue) {
-        delete_transient(ARTIST_LOCK_TRANSIENT);
+    if (! is_array($queue) || $queue === []) {
+        delete_transient(ARTIST_PAGES_LOCK_TRANSIENT);
         exit('Empty');
     }
 
-    $parent_id = ensure_artist_parent_page();
+    $parent_id = artist_pages_ensure_parent_page();
 
     if ($parent_id <= 0) {
-        log_artist_pages_error('Artist parent page could not be resolved during batch processing', [
+        artist_pages_log_error('Artist parent page could not be resolved during batch processing', [
             'offset' => $offset,
-            'queue_count' => is_array($queue) ? count($queue) : 0,
+            'queue_count' => count($queue),
         ]);
 
-        delete_transient(ARTIST_LOCK_TRANSIENT);
+        delete_transient(ARTIST_PAGES_LOCK_TRANSIENT);
         exit('Parent page error');
     }
 
-    $batch = array_slice($queue, $offset, ARTIST_BATCH_SIZE);
+    $batch = array_slice($queue, $offset, ARTIST_PAGES_BATCH_SIZE);
 
     foreach ($batch as $artist) {
         try {
-            if (!is_array($artist)) continue;
+            if (! is_array($artist)) {
+                continue;
+            }
 
-            $id = isset($artist['artist_id']) ? (string) $artist['artist_id'] : '';
+            $artist_id = isset($artist['artist_id']) ? (string) $artist['artist_id'] : '';
 
-            if ($id === '') continue;
+            if ($artist_id === '') {
+                continue;
+            }
 
-            $existing_id = get_existing_artist_page_id($id);
+            $existing_id = get_existing_artist_page_id($artist_id);
 
             if ($existing_id > 0) {
                 update_post_modified_date($existing_id);
@@ -339,18 +330,18 @@ function handle_process_request(): void {
                 continue;
             }
 
-            $created_post_id = create_artist_page($artist, $parent_id);
+            $created_post_id = artist_pages_create_page($artist, $parent_id);
 
             if ($created_post_id > 0) {
                 $has_changes = true;
             }
-        } catch (\Throwable $e) {
-            log_artist_pages_error('Unexpected exception during artist page creation', [
+        } catch (\Throwable $throwable) {
+            artist_pages_log_error('Unexpected exception during artist page creation', [
                 'artist_id' => $artist['artist_id'] ?? '',
                 'artist_name' => $artist['artist_name'] ?? '',
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+                'message' => $throwable->getMessage(),
+                'file' => $throwable->getFile(),
+                'line' => $throwable->getLine(),
             ]);
         }
     }
@@ -360,16 +351,17 @@ function handle_process_request(): void {
     }
 
     $offset += count($batch);
-    update_option(ARTIST_OFFSET_OPTION, $offset);
+    update_option(ARTIST_PAGES_OFFSET_OPTION, $offset);
 
     if ($offset >= count($queue)) {
-        delete_option(ARTIST_QUEUE_OPTION);
-        delete_option(ARTIST_OFFSET_OPTION);
-        delete_transient(ARTIST_LOCK_TRANSIENT);
+        delete_option(ARTIST_PAGES_QUEUE_OPTION);
+        delete_option(ARTIST_PAGES_OFFSET_OPTION);
+        delete_transient(ARTIST_PAGES_LOCK_TRANSIENT);
         exit('Done');
     }
 
-    delete_transient(ARTIST_LOCK_TRANSIENT);
-    exit("Processed $offset");
+    delete_transient(ARTIST_PAGES_LOCK_TRANSIENT);
+    exit('Processed ' . $offset);
 }
-add_action('init', 'handle_process_request', 999);
+
+add_action('init', 'artist_pages_handle_process_request', 999);

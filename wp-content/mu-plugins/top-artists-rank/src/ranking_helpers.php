@@ -8,36 +8,39 @@ declare(strict_types=1);
 function normalize_string(string $text): string {
     // remove accents
     $text = transliterator_transliterate('Any-Accents; Latin-ASCII', $text);
+
     // normalize to lowercase and trim
-    return strtolower(trim((string)$text));
+    return strtolower(trim((string) $text));
 }
 
 function get_needles_by_genre(string $genre = ''): array {
     $map = [
         'funk' => [
-            'funk carioca','funk br','baile funk','funk consciente','funk de bh','funk melody','brazilian funk'
+            'funk carioca','funk br','baile funk','funk consciente','funk de bh','funk melody','brazilian funk',
         ],
         'sertanejo' => [
             'sertanejo','sertanejo universitario','agronejo','modao',
         ],
         'piseiro' => [
-            'piseiro','pisadinha','forro','forro eletronico','arrocha'
+            'piseiro','pisadinha','forro','forro eletronico','arrocha',
         ],
         'trap' => [
-            'trap brasileiro','trap br','rap brasileiro','hip hop brasileiro', 'brazilian trap', 'trap', 'brazilian hip hop', 'trap funk'
+            'trap brasileiro','trap br','rap brasileiro','hip hop brasileiro', 'brazilian trap', 'trap', 'brazilian hip hop', 'trap funk',
         ],
         'pagode' => [
-            'pagode','samba','pagode romantico','samba pagode'
-        ]
+            'pagode','samba','pagode romantico','samba pagode',
+        ],
     ];
 
     if ($genre !== '') {
         $list = $map[$genre] ?? [];
-        if (!is_array($list) || !$list) { return []; }
+        if (! is_array($list) || ! $list) {
+            return [];
+        }
     } else {
         return array_merge(...array_values($map));
     }
-    
+
     return $list;
 }
 
@@ -67,6 +70,7 @@ function artist_matches_genre(string $genre, array $artist_genres): bool {
     $match_idx1 = isset($normalized_genres[1]) && in_array($normalized_genres[1], $needles, true);
     if ($match_idx1) {
         $match_idx2 = isset($normalized_genres[2]) && in_array($normalized_genres[2], $needles, true);
+
         return $match_idx2;
     }
 
@@ -81,10 +85,10 @@ function top_artists_internal_denylist(): array {
     return [
         'funk' => [
             '1APqNiQUA2XpwLEbywSWmZ' => true, // Tropa da W&S
-            '64DTkZLH6KkkMwZEEZ5VWC' => true // Love Funk
+            '64DTkZLH6KkkMwZEEZ5VWC' => true, // Love Funk
         ],
         'sertanejo' => [
-            '0oAZhL6hFrM3YRr6QzjlOf' => true // MJ Records
+            '0oAZhL6hFrM3YRr6QzjlOf' => true, // MJ Records
         ],
         'trap' => [
             '3prRKGJz16RRMRSIM97nHw' => true, // Supernova Ent
@@ -92,7 +96,7 @@ function top_artists_internal_denylist(): array {
             '6KHnECmT9Nn73k1tKs62Wu' => true, // HHR,
             '3YVxmhkewoRHu8WFgWlCb7' => true, // NADAMAL
             '7gHzR22tDNSWGS4HkvvPgw' => true, // THE BOX
-            '5RYjXDdZ8WSMrjTacFC6Gi' => true // AMUSIK
+            '5RYjXDdZ8WSMrjTacFC6Gi' => true, // AMUSIK
         ],
         'pagode' => [],
         'piseiro' => [
@@ -101,7 +105,7 @@ function top_artists_internal_denylist(): array {
         'geral' => [
             '1APqNiQUA2XpwLEbywSWmZ' => true, // Tropa da W&S
             '64DTkZLH6KkkMwZEEZ5VWC' => true, // Love Funk
-            '0oAZhL6hFrM3YRr6QzjlOf' => true, // MJ Records           
+            '0oAZhL6hFrM3YRr6QzjlOf' => true, // MJ Records
             '3prRKGJz16RRMRSIM97nHw' => true, // Supernova Ent
             '25XJqeReVV38w0tR04GGBd' => true, // Mainstreet
             '7gHzR22tDNSWGS4HkvvPgw' => true, // THE BOX
@@ -126,16 +130,24 @@ function top_artists_get_denylist_for_genre(string $genre): array {
  */
 function artist_is_denied_for_genre(string $artist_id, string $genre): bool {
     $deny = top_artists_get_denylist_for_genre($genre);
-    return !empty($deny[$artist_id]);
+
+    return ! empty($deny[$artist_id]);
 }
 
 function parse_release_date_to_ts(?string $date, ?string $precision): int {
-    if (!$date) return 0;
+    if (! $date) {
+        return 0;
+    }
     $p = $precision ?: 'day'; // precision can be 'day', 'month' or 'year'
-    if ($p === 'year')  { $date .= '-01-01'; }
-    if ($p === 'month') { $date .= '-01'; }
+    if ($p === 'year') {
+        $date .= '-01-01';
+    }
+    if ($p === 'month') {
+        $date .= '-01';
+    }
     $ts = strtotime($date);
-    return $ts ? (int)$ts : 0;
+
+    return $ts ? (int) $ts : 0;
 }
 
 // Quick heuristic for label-like names
@@ -148,13 +160,18 @@ function label_name_is_suspect(string $name): bool {
         'estudio',' estudios ',' studio ',' studios ',
         'films',' filmes ',' media ',' midia ',
         'discos',' gravacoes ',' gravações ',
-        'topic', 'various artists',' artistas variados ',' v a ',' v.a '
+        'topic', 'various artists',' artistas variados ',' v a ',' v.a ',
     ];
     foreach ($kw as $k) {
-        if (strpos($n, $k) !== false) return true;
+        if (strpos($n, $k) !== false) {
+            return true;
+        }
     }
     // sufixos/abreviações comuns
-    if (preg_match('/\s(ent|rec|prod|prod\.)$/', trim($n))) return true;
+    if (preg_match('/\s(ent|rec|prod|prod\.)$/', trim($n))) {
+        return true;
+    }
+
     return false;
 }
 

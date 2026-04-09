@@ -2,33 +2,33 @@
 
 declare(strict_types=1);
 
-if (!defined('ABSPATH')) {
+if (! defined('ABSPATH')) {
     exit;
 }
 
 require_once __DIR__ . '/../src/schema_helpers.php';
 
-add_filter('rank_math/json_ld', 'filter_top_artists_schema_graph', 99, 2);
+add_filter('rank_math/json_ld', 'top_artists_filter_schema_graph', 99, 2);
 
-function filter_top_artists_schema_graph(array $data, mixed $jsonld): array {
+function top_artists_filter_schema_graph(array $data, mixed $jsonld): array {
     if (is_admin()) {
         return $data;
     }
 
-    $ranking_context = get_ranking_schema_context();
+    $ranking_context = top_artists_get_ranking_schema_context();
 
     if ($ranking_context !== null) {
-        $data = remove_breadcrumb_list_schema($data);
-        $data[] = build_breadcrumb_schema($ranking_context['breadcrumbs']);
+        $data = top_artists_remove_breadcrumb_list_schema($data);
+        $data[] = top_artists_build_breadcrumb_schema($ranking_context['breadcrumbs']);
 
         if ($ranking_context['mode'] === 'home') {
             $genres = ['geral', 'funk', 'sertanejo', 'trap', 'piseiro', 'pagode'];
 
             foreach ($genres as $genre_slug) {
-                $schema = build_ranking_item_list_schema(
+                $schema = top_artists_build_ranking_item_list_schema(
                     $genre_slug,
                     get_ranking_schema_title($genre_slug),
-                    10
+                    10,
                 );
 
                 if ($schema !== null) {
@@ -38,10 +38,10 @@ function filter_top_artists_schema_graph(array $data, mixed $jsonld): array {
         }
 
         if ($ranking_context['mode'] === 'genre') {
-            $schema = build_ranking_item_list_schema(
+            $schema = top_artists_build_ranking_item_list_schema(
                 $ranking_context['genre'],
                 $ranking_context['title'],
-                50
+                50,
             );
 
             if ($schema !== null) {
@@ -52,17 +52,17 @@ function filter_top_artists_schema_graph(array $data, mixed $jsonld): array {
         return array_values($data);
     }
 
-    $artist_context = get_artist_schema_context();
+    $artist_context = top_artists_get_artist_schema_context();
 
     if ($artist_context === null) {
         return $data;
     }
 
-    $data = remove_breadcrumb_list_schema($data);
-    $data[] = build_breadcrumb_schema($artist_context['breadcrumbs']);
-    $data[] = build_artist_music_group_schema($artist_context);
+    $data = top_artists_remove_breadcrumb_list_schema($data);
+    $data[] = top_artists_build_breadcrumb_schema($artist_context['breadcrumbs']);
+    $data[] = top_artists_build_artist_music_group_schema($artist_context);
 
-    $top_tracks_schema = build_artist_top_tracks_schema($artist_context);
+    $top_tracks_schema = top_artists_build_artist_top_tracks_schema($artist_context);
 
     if ($top_tracks_schema !== null) {
         $data[] = $top_tracks_schema;
@@ -71,7 +71,7 @@ function filter_top_artists_schema_graph(array $data, mixed $jsonld): array {
     return array_values($data);
 }
 
-function get_ranking_schema_context(): ?array {
+function top_artists_get_ranking_schema_context(): ?array {
     if (is_front_page()) {
         return [
             'mode' => 'home',
@@ -106,16 +106,16 @@ function get_ranking_schema_context(): ?array {
     ];
 
     foreach ($ranking_pages as $page_slug => $page_data) {
-        if (!is_page($page_slug)) {
+        if (! is_page($page_slug)) {
             continue;
         }
 
-        if (!function_exists('get_top_artists_by_genre')) {
+        if (! function_exists('top_artists_get_top_artists_by_genre')) {
             return null;
         }
 
-        $top_artists = get_top_artists_by_genre($page_data['genre'], 50);
-        $item_count = is_array($top_artists) ? count_valid_artists($top_artists) : 0;
+        $top_artists = top_artists_get_top_artists_by_genre($page_data['genre'], 50);
+        $item_count = is_array($top_artists) ? top_artists_count_valid_artists($top_artists) : 0;
         $schema_title = build_dynamic_schema_title($page_data['genre'], $item_count);
 
         return [
@@ -138,10 +138,10 @@ function get_ranking_schema_context(): ?array {
     return null;
 }
 
-function get_current_artist_spotify_id(?int $post_id = null): string {
+function top_artists_get_current_artist_spotify_id(?int $post_id = null): string {
     $resolved_post_id = $post_id ?? get_the_ID();
 
-    if (!$resolved_post_id) {
+    if (! $resolved_post_id) {
         return '';
     }
 
@@ -150,14 +150,14 @@ function get_current_artist_spotify_id(?int $post_id = null): string {
     return is_string($artist_id) ? $artist_id : '';
 }
 
-function get_artist_schema_context(): ?array {
+function top_artists_get_artist_schema_context(): ?array {
     $post_id = get_queried_object_id();
 
     if ($post_id <= 0) {
         return null;
     }
-    
-    $artist_id = get_current_artist_spotify_id($post_id);
+
+    $artist_id = top_artists_get_current_artist_spotify_id($post_id);
 
     if ($artist_id === '') {
         return null;
@@ -177,12 +177,12 @@ function get_artist_schema_context(): ?array {
         return null;
     }
 
-    $artist_context = function_exists('get_artist_context_by_spotify_id')
-        ? get_artist_context_by_spotify_id($artist_id)
+    $artist_context = function_exists('top_artists_get_artist_context_by_spotify_id')
+        ? top_artists_get_artist_context_by_spotify_id($artist_id)
         : [];
 
-    $top_tracks = function_exists('get_artist_top_tracks')
-        ? get_artist_top_tracks($artist_id, 10)
+    $top_tracks = function_exists('top_artists_get_artist_top_tracks')
+        ? top_artists_get_artist_top_tracks($artist_id, 10)
         : [];
 
     $spotify_url = isset($artist_context['spotify_url']) ? (string) $artist_context['spotify_url'] : '';
@@ -213,7 +213,7 @@ function get_artist_schema_context(): ?array {
     ];
 }
 
-function count_valid_artists(array $top_artists): int {
+function top_artists_count_valid_artists(array $top_artists): int {
     $count = 0;
 
     foreach ($top_artists as $artist) {
@@ -227,7 +227,7 @@ function count_valid_artists(array $top_artists): int {
     return $count;
 }
 
-function remove_breadcrumb_list_schema(array $data): array {
+function top_artists_remove_breadcrumb_list_schema(array $data): array {
     foreach ($data as $key => $schema) {
         if (
             is_array($schema) &&
@@ -241,7 +241,7 @@ function remove_breadcrumb_list_schema(array $data): array {
     return $data;
 }
 
-function build_breadcrumb_schema(array $breadcrumbs): array {
+function top_artists_build_breadcrumb_schema(array $breadcrumbs): array {
     $items = [];
 
     foreach ($breadcrumbs as $index => $breadcrumb) {
@@ -261,14 +261,14 @@ function build_breadcrumb_schema(array $breadcrumbs): array {
     ];
 }
 
-function build_ranking_item_list_schema(string $genre_slug, string $title, int $limit): ?array {
-    if (!function_exists('get_top_artists_by_genre')) {
+function top_artists_build_ranking_item_list_schema(string $genre_slug, string $title, int $limit): ?array {
+    if (! function_exists('top_artists_get_top_artists_by_genre')) {
         return null;
     }
 
-    $top_artists = get_top_artists_by_genre($genre_slug, $limit);
+    $top_artists = top_artists_get_top_artists_by_genre($genre_slug, $limit);
 
-    if (empty($top_artists) || !is_array($top_artists)) {
+    if (empty($top_artists) || ! is_array($top_artists)) {
         return null;
     }
 
@@ -322,7 +322,7 @@ function build_ranking_item_list_schema(string $genre_slug, string $title, int $
     ];
 }
 
-function build_artist_music_group_schema(array $artist_context): array {
+function top_artists_build_artist_music_group_schema(array $artist_context): array {
     $schema = [
         '@type' => 'MusicGroup',
         'name' => $artist_context['artist_name'],
@@ -342,10 +342,10 @@ function build_artist_music_group_schema(array $artist_context): array {
     return $schema;
 }
 
-function build_artist_top_tracks_schema(array $artist_context): ?array {
+function top_artists_build_artist_top_tracks_schema(array $artist_context): ?array {
     $top_tracks = $artist_context['top_tracks'] ?? [];
 
-    if (!is_array($top_tracks) || $top_tracks === []) {
+    if (! is_array($top_tracks) || $top_tracks === []) {
         return null;
     }
 
@@ -353,7 +353,7 @@ function build_artist_top_tracks_schema(array $artist_context): ?array {
     $position = 1;
 
     foreach ($top_tracks as $track) {
-        if (!is_array($track)) {
+        if (! is_array($track)) {
             continue;
         }
 

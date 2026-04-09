@@ -1,20 +1,20 @@
 <?php
+
 /**
  * Plugin Name: Refresh Page Modified Dates
  * Description: Updates the modified date of specific pages weekly by slug.
  * Author: Rafael Vida
  */
 
-if (!defined('ABSPATH')) {
+declare(strict_types=1);
+
+if (! defined('ABSPATH')) {
     exit;
 }
 
 require_once __DIR__ . '/common/post-updates.php';
 
-/**
- * Target page slugs to update.
- */
-const TARGET_PAGE_SLUGS = [
+const REFRESH_PAGES_TARGET_SLUGS = [
     'artistas-mais-tocados-do-brasil',
     'artistas-de-funk-mais-tocados',
     'artistas-de-sertanejo-mais-tocados',
@@ -23,46 +23,40 @@ const TARGET_PAGE_SLUGS = [
     'artistas-de-pagode-mais-tocados',
 ];
 
-/**
- * Registers weekly interval in WP-Cron.
- */
-add_filter('cron_schedules', function (array $schedules): array {
+add_filter('cron_schedules', 'refresh_pages_register_weekly_interval');
+
+function refresh_pages_register_weekly_interval(array $schedules): array {
     $schedules['weekly'] = [
         'interval' => WEEK_IN_SECONDS,
-        'display'  => __('Once Weekly'),
+        'display' => __('Once Weekly'),
     ];
 
     return $schedules;
-});
+}
 
-/**
- * Ensures weekly scheduling is set.
- */
-add_action('init', function (): void {
-    if (!wp_next_scheduled('refresh_pages_event')) {
+add_action('init', 'refresh_pages_schedule_event');
+
+function refresh_pages_schedule_event(): void {
+    if (! wp_next_scheduled('refresh_pages_event')) {
         wp_schedule_event(time(), 'weekly', 'refresh_pages_event');
     }
-});
+}
 
 /**
- * Resolves target page IDs from slugs.
- *
  * @return int[]
  */
-function get_target_page_ids_by_slug(): array
-{
+function refresh_pages_get_target_page_ids_by_slug(): array {
     $page_ids = [];
-
     $front_page_id = (int) get_option('page_on_front');
 
     if ($front_page_id > 0) {
         $page_ids[] = $front_page_id;
     }
 
-    foreach (TARGET_PAGE_SLUGS as $slug) {
+    foreach (REFRESH_PAGES_TARGET_SLUGS as $slug) {
         $page = get_page_by_path($slug);
 
-        if (!$page instanceof \WP_Post) {
+        if (! $page instanceof \WP_Post) {
             error_log('[refresh-pages-dates] Page not found for slug: ' . $slug);
             continue;
         }
@@ -73,26 +67,21 @@ function get_target_page_ids_by_slug(): array
     return array_values(array_unique($page_ids));
 }
 
-/**
- * Updates target pages weekly.
- */
-add_action('refresh_pages_event', function (): void {
-    global $wpdb;
+add_action('refresh_pages_event', 'refresh_pages_update_target_pages');
 
-    $page_ids = get_target_page_ids_by_slug();
+function refresh_pages_update_target_pages(): void {
+    $page_ids = refresh_pages_get_target_page_ids_by_slug();
 
-    if (empty($page_ids)) {
+    if ($page_ids === []) {
         error_log('[refresh-pages-dates] No target pages found.');
+
         return;
     }
-
-    $now_local = current_time('mysql');
-    $now_gmt   = current_time('mysql', 1);
 
     foreach ($page_ids as $page_id) {
         $page = get_post($page_id);
 
-        if (!$page instanceof \WP_Post) {
+        if (! $page instanceof \WP_Post) {
             error_log('[refresh-pages-dates] Invalid page for ID: ' . $page_id);
             continue;
         }
@@ -103,4 +92,4 @@ add_action('refresh_pages_event', function (): void {
     if (class_exists('\RankMath\Sitemap\Cache')) {
         \RankMath\Sitemap\Cache::invalidate_storage();
     }
-});
+}
